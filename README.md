@@ -71,6 +71,10 @@ Issues
 Changes
 -------
 
+### v56-quota
+
+* Update to v56 of Mail-in-a-Box
+
 ### v0.55-quota-0.22-beta
 
 * Update to v55 of Mail-in-a-Box
