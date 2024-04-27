@@ -22,8 +22,9 @@ source /etc/mailinabox.conf # load global vars
 echo "Installing Roundcube (webmail)..."
 apt_install \
 	dbconfig-common \
-	php-cli php-sqlite3 php-intl php-json php-common php-curl php-ldap \
-	php-gd php-pspell tinymce libjs-jquery libjs-jquery-mousewheel libmagic1 php-mbstring
+	php"${PHP_VER}"-cli php"${PHP_VER}"-sqlite3 php"${PHP_VER}"-intl php"${PHP_VER}"-common php"${PHP_VER}"-curl php"${PHP_VER}"-imap \
+	php"${PHP_VER}"-gd php"${PHP_VER}"-pspell php"${PHP_VER}"-mbstring libjs-jquery libjs-jquery-mousewheel libmagic1 \
+	sqlite3
 
 # Install Roundcube from source if it is not already present or if it is out of date.
 # Combine the Roundcube version number with the commit hash of plugins to track
@@ -35,12 +36,12 @@ apt_install \
 #   https://github.com/mstilkerich/rcmcarddav/releases
 # The easiest way to get the package hashes is to run this script and get the hash from
 # the error message.
-VERSION=1.5.2
-HASH=208ce4ca0be423cc0f7070ff59bd03588b4439bf
-PERSISTENT_LOGIN_VERSION=59ca1b0d3a02cff5fa621c1ad581d15f9d642fe8
+VERSION=1.6.6
+HASH=7705d2736890c49e7ae3ac75e3ae00ba56187056
+PERSISTENT_LOGIN_VERSION=bde7b6840c7d91de627ea14e81cf4133cbb3c07a # version 5.3
 HTML5_NOTIFIER_VERSION=68d9ca194212e15b3c7225eb6085dbcf02fd13d7 # version 0.6.4+
-CARDDAV_VERSION=4.3.0
-CARDDAV_HASH=4ad7df8843951062878b1375f77c614f68bc5c61
+CARDDAV_VERSION=4.4.3
+CARDDAV_HASH=74f8ba7aee33e78beb9de07f7f44b81f6071b644
 
 UPDATE_KEY=$VERSION:$PERSISTENT_LOGIN_VERSION:$HTML5_NOTIFIER_VERSION:$CARDDAV_VERSION
 
@@ -83,7 +84,7 @@ if [ $needs_update == 1 ]; then
 
 	# download and verify the full release of the carddav plugin
 	wget_verify \
-		https://github.com/blind-coder/rcmcarddav/releases/download/v${CARDDAV_VERSION}/carddav-v${CARDDAV_VERSION}.tar.gz \
+		https://github.com/mstilkerich/rcmcarddav/releases/download/v${CARDDAV_VERSION}/carddav-v${CARDDAV_VERSION}.tar.gz \
 		$CARDDAV_HASH \
 		/tmp/carddav.tar.gz
 
@@ -115,8 +116,7 @@ cat > $RCM_CONFIG <<EOF;
 \$config['log_dir'] = '/var/log/roundcubemail/';
 \$config['temp_dir'] = '/var/tmp/roundcubemail/';
 \$config['db_dsnw'] = 'sqlite:///$STORAGE_ROOT/mail/roundcube/roundcube.sqlite?mode=0640';
-\$config['default_host'] = 'ssl://localhost';
-\$config['default_port'] = 993;
+\$config['imap_host'] = 'ssl://localhost:993';
 \$config['imap_conn_options'] = array(
   'ssl'         => array(
      'verify_peer'  => false,
@@ -124,7 +124,7 @@ cat > $RCM_CONFIG <<EOF;
    ),
  );
 \$config['imap_timeout'] = 15;
-\$config['smtp_server'] = 'tls://127.0.0.1';
+\$config['smtp_host'] = 'tls://127.0.0.1';
 \$config['smtp_conn_options'] = array(
   'ssl'         => array(
      'verify_peer'  => false,
@@ -141,7 +141,12 @@ cat > $RCM_CONFIG <<EOF;
 \$config['login_username_filter'] = 'email';
 \$config['password_charset'] = 'UTF-8';
 \$config['junk_mbox'] = 'Spam';
+/* ensure roundcube session id's aren't leaked to other parts of the server */
+\$config['session_path'] = '/mail/';
+/* prevent CSRF, requires php 7.3+ */
+\$config['session_samesite'] = 'Strict';
 \$config['quota_zero_as_unlimited'] = true;
+?>
 EOF
 
 # Configure CardDav
@@ -154,7 +159,7 @@ cat > ${RCM_PLUGIN_DIR}/carddav/config.inc.php <<EOF;
 	 'name'         =>  'ownCloud',
 	 'username'     =>  '%u', // login username
 	 'password'     =>  '%p', // login password
-	 'url'          =>  'https://${PRIMARY_HOSTNAME}/cloud/remote.php/carddav/addressbooks/%u/contacts',
+	 'url'          =>  'https://${PRIMARY_HOSTNAME}/cloud/remote.php/dav/addressbooks/users/%u/contacts/',
 	 'active'       =>  true,
 	 'readonly'     =>  false,
 	 'refresh_time' => '02:00:00',
@@ -166,8 +171,8 @@ cat > ${RCM_PLUGIN_DIR}/carddav/config.inc.php <<EOF;
 EOF
 
 # Create writable directories.
-mkdir -p /var/log/roundcubemail /var/tmp/roundcubemail $STORAGE_ROOT/mail/roundcube
-chown -R www-data.www-data /var/log/roundcubemail /var/tmp/roundcubemail $STORAGE_ROOT/mail/roundcube
+mkdir -p /var/log/roundcubemail /var/tmp/roundcubemail "$STORAGE_ROOT/mail/roundcube"
+chown -R www-data:www-data /var/log/roundcubemail /var/tmp/roundcubemail "$STORAGE_ROOT/mail/roundcube"
 
 # Ensure the log file monitored by fail2ban exists, or else fail2ban can't start.
 sudo -u www-data touch /var/log/roundcubemail/errors.log
@@ -181,31 +186,40 @@ cp ${RCM_PLUGIN_DIR}/password/config.inc.php.dist \
 tools/editconf.py ${RCM_PLUGIN_DIR}/password/config.inc.php \
 	"\$config['password_minimum_length']=8;" \
 	"\$config['password_db_dsn']='sqlite:///$STORAGE_ROOT/mail/users.sqlite';" \
-	"\$config['password_query']='UPDATE users SET password=%D WHERE email=%u';" \
-	"\$config['password_dovecotpw']='/usr/bin/doveadm pw';" \
-	"\$config['password_dovecotpw_method']='SHA512-CRYPT';" \
-	"\$config['password_dovecotpw_with_method']=true;"
+	"\$config['password_query']='UPDATE users SET password=%P WHERE email=%u';" \
+	"\$config['password_algorithm']='sha512-crypt';" \
+	"\$config['password_algorithm_prefix']='{SHA512-CRYPT}';"
 
 # so PHP can use doveadm, for the password changing plugin
 usermod -a -G dovecot www-data
 
 # set permissions so that PHP can use users.sqlite
 # could use dovecot instead of www-data, but not sure it matters
-chown root.www-data $STORAGE_ROOT/mail
-chmod 775 $STORAGE_ROOT/mail
-chown root.www-data $STORAGE_ROOT/mail/users.sqlite
-chmod 664 $STORAGE_ROOT/mail/users.sqlite
+chown root:www-data "$STORAGE_ROOT/mail"
+chmod 775 "$STORAGE_ROOT/mail"
+chown root:www-data "$STORAGE_ROOT/mail/users.sqlite"
+chmod 664 "$STORAGE_ROOT/mail/users.sqlite"
 
 # Fix Carddav permissions:
-chown -f -R root.www-data ${RCM_PLUGIN_DIR}/carddav
-# root.www-data need all permissions, others only read
+chown -f -R root:www-data ${RCM_PLUGIN_DIR}/carddav
+# root:www-data need all permissions, others only read
 chmod -R 774 ${RCM_PLUGIN_DIR}/carddav
 
 # Run Roundcube database migration script (database is created if it does not exist)
-${RCM_DIR}/bin/updatedb.sh --dir ${RCM_DIR}/SQL --package roundcube
-chown www-data:www-data $STORAGE_ROOT/mail/roundcube/roundcube.sqlite
-chmod 664 $STORAGE_ROOT/mail/roundcube/roundcube.sqlite
+php"$PHP_VER" ${RCM_DIR}/bin/updatedb.sh --dir ${RCM_DIR}/SQL --package roundcube
+chown www-data:www-data "$STORAGE_ROOT/mail/roundcube/roundcube.sqlite"
+chmod 664 "$STORAGE_ROOT/mail/roundcube/roundcube.sqlite"
+
+# Patch the Roundcube code to eliminate an issue that causes postfix to reject our sqlite
+# user database (see https://github.com/mail-in-a-box/mailinabox/issues/2185)
+sed -i.miabold 's/^[^#]\+.\+PRAGMA journal_mode = WAL.\+$/#&/' \
+/usr/local/lib/roundcubemail/program/lib/Roundcube/db/sqlite.php
+
+# Because Roundcube wants to set the PRAGMA we just deleted from the source, we apply it here
+# to the roundcube database (see https://github.com/roundcube/roundcubemail/issues/8035)
+# Database should exist, created by migration script
+hide_output sqlite3 "$STORAGE_ROOT/mail/roundcube/roundcube.sqlite" 'PRAGMA journal_mode=WAL;'
 
 # Enable PHP modules.
-phpenmod -v php mcrypt imap
-restart_service php7.2-fpm
+phpenmod -v "$PHP_VER" imap
+restart_service php"$PHP_VER"-fpm

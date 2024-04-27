@@ -1,4 +1,4 @@
-import base64, os, os.path, hmac, json, secrets
+import base64, hmac, json, secrets
 from datetime import timedelta
 
 from expiringdict import ExpiringDict
@@ -22,20 +22,8 @@ class AuthService:
 	def init_system_api_key(self):
 		"""Write an API key to a local file so local processes can use the API"""
 
-		def create_file_with_mode(path, mode):
-			# Based on answer by A-B-B: http://stackoverflow.com/a/15015748
-			old_umask = os.umask(0)
-			try:
-				return os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT, mode), 'w')
-			finally:
-				os.umask(old_umask)
-
-		self.key = secrets.token_hex(32)
-
-		os.makedirs(os.path.dirname(self.key_path), exist_ok=True)
-
-		with create_file_with_mode(self.key_path, 0o640) as key_file:
-			key_file.write(self.key + '\n')
+		with open(self.key_path, encoding='utf-8') as file:
+			self.key = file.read()
 
 	def authenticate(self, request, env, login_only=False, logout=False):
 		"""Test if the HTTP Authorization header's username matches the system key, a session key,
@@ -60,11 +48,13 @@ class AuthService:
 			return username, password
 
 		username, password = parse_http_authorization_basic(request.headers.get('Authorization', ''))
-		if username in (None, ""):
-			raise ValueError("Authorization header invalid.")
+		if username in {None, ""}:
+			msg = "Authorization header invalid."
+			raise ValueError(msg)
 
 		if username.strip() == "" and password.strip() == "":
-			raise ValueError("No email address, password, session key, or API key provided.")
+			msg = "No email address, password, session key, or API key provided."
+			raise ValueError(msg)
 
 		# If user passed the system API key, grant administrative privs. This key
 		# is not associated with a user.
@@ -84,7 +74,8 @@ class AuthService:
 
 		# If no password was given, but a username was given, we're missing some information.
 		elif password.strip() == "":
-			raise ValueError("Enter a password.")
+			msg = "Enter a password."
+			raise ValueError(msg)
 
 		else:
 			# The user is trying to log in with a username and a password
@@ -126,7 +117,8 @@ class AuthService:
 				])
 		except:
 			# Login failed.
-			raise ValueError("Incorrect email address or password.")
+			msg = "Incorrect email address or password."
+			raise ValueError(msg)
 
 		# If MFA is enabled, check that MFA passes.
 		status, hints = validate_auth_mfa(email, request, env)

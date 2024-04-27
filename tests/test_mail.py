@@ -30,15 +30,11 @@ print("IMAP login is OK.")
 # Attempt to send a mail to ourself.
 mailsubject = "Mail-in-a-Box Automated Test Message " + uuid.uuid4().hex
 emailto = emailaddress
-msg = """From: {emailaddress}
+msg = f"""From: {emailaddress}
 To: {emailto}
-Subject: {subject}
+Subject: {mailsubject}
 
-This is a test message. It should be automatically deleted by the test script.""".format(
-	emailaddress=emailaddress,
-	emailto=emailto,
-	subject=mailsubject,
-	)
+This is a test message. It should be automatically deleted by the test script."""
 
 # Connect to the server on the SMTP submission TLS port.
 server = smtplib.SMTP_SSL(host)
@@ -48,7 +44,7 @@ server = smtplib.SMTP_SSL(host)
 ipaddr = socket.gethostbyname(host) # IPv4 only!
 reverse_ip = dns.reversename.from_address(ipaddr) # e.g. "1.0.0.127.in-addr.arpa."
 try:
-	reverse_dns = dns.resolver.query(reverse_ip, 'PTR')[0].target.to_text(omit_final_dot=True) # => hostname
+	reverse_dns = dns.resolver.resolve(reverse_ip, 'PTR')[0].target.to_text(omit_final_dot=True) # => hostname
 except dns.resolver.NXDOMAIN:
 	print("Reverse DNS lookup failed for %s. SMTP EHLO name check skipped." % ipaddr)
 	reverse_dns = None

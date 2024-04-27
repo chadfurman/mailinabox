@@ -1,6 +1,149 @@
 CHANGELOG
 =========
 
+Version 68 (April 1, 2024)
+--------------------------
+
+Package updates:
+
+* Roundcube updated to version 1.6.6.
+* Nextcloud is updated to version 26.0.12.
+
+Mail:
+
+* Updated postfix's configuration to guard against SMTP smuggling to the long-term fix (https://www.postfix.org/smtp-smuggling.html).
+
+Control Panel:
+
+* Improved reporting of Spamhaus response codes.
+* Improved detection of SSH port.
+* Fixed an error if last saved status check results were corrupted.
+* Other minor fixes.
+
+Other:
+
+* fail2ban is updated to see "HTTP/2.0" requests to munin also.
+* Internal improvements to the code to make it more reliable and readable.
+
+
+Version 67 (December 22, 2023)
+------------------------------
+
+* Guard against a newly published vulnerability called SMTP Smuggling. See https://sec-consult.com/blog/detail/smtp-smuggling-spoofing-e-mails-worldwide/.
+
+Version 66 (December 17, 2023)
+------------------------------
+
+* Some users reported an error installing Mail-in-a-Box related to the virtualenv command. This is hopefully fixed.
+* Roundcube is updated to 1.6.5 fixing a security vulnerability.
+* For Mail-in-a-Box developers, a new setup variable is added to pull the source code from a different repository.
+
+Version 65 (October 27, 2023)
+-----------------------------
+
+* Roundcube updated to 1.6.4 fixing a security vulnerability.
+* zpush.sh updated to version 2.7.1.
+* Fixed a typo in the control panel.
+
+Version 64 (September 2, 2023)
+------------------------------
+
+* Fixed broken installation when upgrading from Mail-in-a-Box version 56 (Nextcloud 22) and earlier because of an upstream packaging issue.
+* Fixed backups to work with the latest duplicity package which was not backwards compatible.
+* Fixed setting B2 as a backup target with a slash in the application key.
+* Turned off OpenDMARC diagnostic reports sent in response to incoming mail.
+* Fixed some crashes when using an unrelased version of Mail-in-a-Box.
+* Added z-push administration scripts.
+
+Version 63 (July 27, 2023)
+--------------------------
+
+* Nextcloud updated to 25.0.7.
+
+Version 62 (May 20, 2023)
+-------------------------
+
+Package updates:
+
+* Nextcloud updated to 23.0.12 (and its apps also updated).
+* Roundcube updated to 1.6.1.
+* Z-Push to 2.7.0, which has compatibility for Ubuntu 22.04, so it works again.
+
+Mail:
+
+* Roundcube's password change page is now working again.
+
+Control panel:
+
+* Allow setting the backup location's S3 region name for non-AWS S3-compatible backup hosts.
+* Control panel pages can be opened in a new tab/window and bookmarked and browser history navigation now works.
+* Add a Copy button to put the rsync backup public key on clipboard.
+* Allow secondary DNS xfr: items added in the control panel to be hostnames too.
+* Fixed issue where sshkeygen fails when IPv6 is disabled.
+* Fixed issue opening munin reports.
+* Fixed report formatting in status emails sent to the administrator.
+
+Version 61.1 (January 28, 2023)
+-------------------------------
+
+* Fixed rsync backups not working with the default port.
+* Reverted "Improve error messages in the management tools when external command-line tools are run." because of the possibility of user secrets being included in error messages.
+* Fix for TLS certificate SHA fingerprint not being displayed during setup.
+
+Version 61 (January 21, 2023)
+-----------------------------
+
+System:
+
+* fail2ban didn't start after setup.
+
+Mail:
+
+* Disable Roundcube password plugin since it was corrupting the user database.
+
+Control panel:
+
+* Fix changing existing backup settings when the rsync type is used.
+* Allow setting a custom port for rsync backups.
+* Fixes to DNS lookups during status checks when there are timeouts, enforce timeouts better.
+* A new check is added to ensure fail2ban is running.
+* Fixed a color.
+* Improve error messages in the management tools when external command-line tools are run.
+
+Version 60.1 (October 30, 2022)
+-------------------------------
+
+* A setup issue where the DNS server nsd isn't running at the end of setup is (hopefully) fixed.
+* Nextcloud is updated to 23.0.10 (contacts to 4.2.2, calendar to 3.5.1).
+
+Version 60 (October 11, 2022)
+-----------------------------
+
+This is the first release for Ubuntu 22.04.
+
+**Before upgrading**, you must **first upgrade your existing Ubuntu 18.04 box to Mail-in-a-Box v0.51 or later**, if you haven't already done so. That may not be possible after Ubuntu 18.04 reaches its end of life in April 2023, so please complete the upgrade well before then. (If you are not using Nextcloud's contacts or calendar, you can migrate to the latest version of Mail-in-a-Box from any previous version.)
+
+For complete upgrade instructions, see:
+
+https://discourse.mailinabox.email/t/version-60-for-ubuntu-22-04-is-about-to-be-released/9558
+
+No major features of Mail-in-a-Box have changed in this release, although some minor fixes were made.
+
+With the newer version of Ubuntu the following software packages we use are updated:
+
+* dovecot is upgraded to 2.3.16, postfix to 3.6.4, opendmark to 1.4 (which adds ARC-Authentication-Results headers), and spampd to 2.53 (alleviating a mail delivery rate limiting bug).
+* Nextcloud is upgraded to 23.0.4 (contacts to 4.2.0, calendar to 3.5.0).
+* Roundcube is upgraded to 1.6.0.
+* certbot is upgraded to 1.21 (via the Ubuntu repository instead of a PPA).
+* fail2ban is upgraded to 0.11.2.
+* nginx is upgraded to 1.18.
+* PHP is upgraded from 7.2 to 8.0.
+
+Also:
+
+* Roundcube's login session cookie was tightened. Existing sessions may require a manual logout.
+* Moved Postgrey's database under $STORAGE_ROOT.
+
 Version 57a (June 19, 2022)
 ---------------------------
 

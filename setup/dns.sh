@@ -10,17 +10,13 @@
 source setup/functions.sh # load our functions
 source /etc/mailinabox.conf # load global vars
 
-# Install the packages.
-#
-# * nsd: The non-recursive nameserver that publishes our DNS records.
-# * ldnsutils: Helper utilities for signing DNSSEC zones.
-# * openssh-client: Provides ssh-keyscan which we use to create SSHFP records.
-echo "Installing nsd (DNS server)..."
-apt_install nsd ldnsutils openssh-client
-
 # Prepare nsd's configuration.
-
+# We configure nsd before installation as we only want it to bind to some addresses
+# and it otherwise will have port / bind conflicts with bind9 used as the local resolver
 mkdir -p /var/run/nsd
+mkdir -p /etc/nsd
+mkdir -p /etc/nsd/zones
+touch /etc/nsd/zones.conf
 
 cat > /etc/nsd/nsd.conf << EOF;
 # Do not edit. Overwritten by Mail-in-a-Box setup.
@@ -42,18 +38,6 @@ server:
 
 EOF
 
-# Add log rotation
-cat > /etc/logrotate.d/nsd <<EOF;
-/var/log/nsd.log {
-  weekly
-  missingok
-  rotate 12
-  compress
-  delaycompress
-  notifempty
-}
-EOF
-
 # Since we have bind9 listening on localhost for locally-generated
 # DNS queries that require a recursive nameserver, and the system
 # might have other network interfaces for e.g. tunnelling, we have
@@ -69,6 +53,26 @@ echo "include: /etc/nsd/nsd.conf.d/*.conf" >> /etc/nsd/nsd.conf;
 # Remove the old location of zones.conf that we generate. It will
 # now be stored in /etc/nsd/nsd.conf.d.
 rm -f /etc/nsd/zones.conf
+
+# Add log rotation
+cat > /etc/logrotate.d/nsd <<EOF;
+/var/log/nsd.log {
+  weekly
+  missingok
+  rotate 12
+  compress
+  delaycompress
+  notifempty
+}
+EOF
+
+# Install the packages.
+#
+# * nsd: The non-recursive nameserver that publishes our DNS records.
+# * ldnsutils: Helper utilities for signing DNSSEC zones.
+# * openssh-client: Provides ssh-keyscan which we use to create SSHFP records.
+echo "Installing nsd (DNS server)..."
+apt_install nsd ldnsutils openssh-client
 
 # Create DNSSEC signing keys.
 
@@ -102,7 +106,7 @@ if [ ! -f "$STORAGE_ROOT/dns/dnssec/$algo.conf" ]; then
 	# (This previously used -b 2048 but it's unclear if this setting makes sense
 	# for non-RSA keys, so it's removed. The RSA-based keys are not recommended
 	# anymore anyway.)
-	KSK=$(umask 077; cd $STORAGE_ROOT/dns/dnssec; ldns-keygen -r /dev/urandom -a $algo -k _domain_);
+	KSK=$(umask 077; cd "$STORAGE_ROOT/dns/dnssec"; ldns-keygen -r /dev/urandom -a $algo -k _domain_);
 
 	# Now create a Zone-Signing Key (ZSK) which is expected to be
 	# rotated more often than a KSK, although we have no plans to
@@ -110,7 +114,7 @@ if [ ! -f "$STORAGE_ROOT/dns/dnssec/$algo.conf" ]; then
 	# disturbing DNS availability.) Omit `-k`.
 	# (This previously used -b 1024 but it's unclear if this setting makes sense
 	# for non-RSA keys, so it's removed.)
-	ZSK=$(umask 077; cd $STORAGE_ROOT/dns/dnssec; ldns-keygen -r /dev/urandom -a $algo _domain_);
+	ZSK=$(umask 077; cd "$STORAGE_ROOT/dns/dnssec"; ldns-keygen -r /dev/urandom -a $algo _domain_);
 
 	# These generate two sets of files like:
 	#
@@ -122,7 +126,7 @@ if [ ! -f "$STORAGE_ROOT/dns/dnssec/$algo.conf" ]; then
 	# options. So we'll store the names of the files we just generated.
 	# We might have multiple keys down the road. This will identify
 	# what keys are the current keys.
-	cat > $STORAGE_ROOT/dns/dnssec/$algo.conf << EOF;
+	cat > "$STORAGE_ROOT/dns/dnssec/$algo.conf" << EOF;
 KSK=$KSK
 ZSK=$ZSK
 EOF
@@ -138,7 +142,7 @@ cat > /etc/cron.daily/mailinabox-dnssec << EOF;
 #!/bin/bash
 # Mail-in-a-Box
 # Re-sign any DNS zones with DNSSEC because the signatures expire periodically.
-$(pwd)/tools/dns_update
+$PWD/tools/dns_update
 EOF
 chmod +x /etc/cron.daily/mailinabox-dnssec
 

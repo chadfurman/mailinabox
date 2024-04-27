@@ -1,3 +1,4 @@
+#!/bin/bash
 # Are we running as root?
 if [[ $EUID -ne 0 ]]; then
 	echo "This script must be run as root. Please re-run like this:"
@@ -7,11 +8,11 @@ if [[ $EUID -ne 0 ]]; then
 	exit 1
 fi
 
-# Check that we are running on Ubuntu 18.04 LTS (or 18.04.xx).
-if [ "$(lsb_release -d | sed 's/.*:\s*//' | sed 's/18\.04\.[0-9]/18.04/' )" != "Ubuntu 18.04 LTS" ]; then
-	echo "Mail-in-a-Box only supports being installed on Ubuntu 18.04, sorry. You are running:"
+# Check that we are running on Ubuntu 20.04 LTS (or 20.04.xx).
+if [ "$( lsb_release --id --short )" != "Ubuntu" ] || [ "$( lsb_release --release --short )" != "22.04" ]; then
+	echo "Mail-in-a-Box only supports being installed on Ubuntu 22.04, sorry. You are running:"
 	echo
-	lsb_release -d | sed 's/.*:\s*//'
+	lsb_release --description --short
 	echo
 	echo "We can't write scripts that run on every possible setup, sorry."
 	exit 1
@@ -26,16 +27,16 @@ fi
 #
 # Skip the check if we appear to be running inside of Vagrant, because that's really just for testing.
 TOTAL_PHYSICAL_MEM=$(head -n 1 /proc/meminfo | awk '{print $2}')
-if [ $TOTAL_PHYSICAL_MEM -lt 490000 ]; then
+if [ "$TOTAL_PHYSICAL_MEM" -lt 490000 ]; then
 if [ ! -d /vagrant ]; then
-	TOTAL_PHYSICAL_MEM=$(expr \( \( $TOTAL_PHYSICAL_MEM \* 1024 \) / 1000 \) / 1000)
+	TOTAL_PHYSICAL_MEM=$(( TOTAL_PHYSICAL_MEM * 1024 / 1000 / 1000 ))
 	echo "Your Mail-in-a-Box needs more memory (RAM) to function properly."
 	echo "Please provision a machine with at least 512 MB, 1 GB recommended."
 	echo "This machine has $TOTAL_PHYSICAL_MEM MB memory."
 	exit
 fi
 fi
-if [ $TOTAL_PHYSICAL_MEM -lt 750000 ]; then
+if [ "$TOTAL_PHYSICAL_MEM" -lt 750000 ]; then
 	echo "WARNING: Your Mail-in-a-Box has less than 768 MB of memory."
 	echo "         It might run unreliably when under heavy load."
 fi

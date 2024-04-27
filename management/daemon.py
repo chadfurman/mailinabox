@@ -11,11 +11,11 @@
 # service mailinabox start # when done debugging, start it up again
 
 import os, os.path, re, json, time
-import multiprocessing.pool, subprocess
+import multiprocessing.pool
 
 from functools import wraps
 
-from flask import Flask, request, render_template, abort, Response, send_from_directory, make_response
+from flask import Flask, request, render_template, Response, send_from_directory, make_response
 
 import auth, utils
 from mailconfig import get_mail_users, get_mail_users_ex, get_admins, add_mail_user, set_mail_password, remove_mail_user
@@ -23,6 +23,7 @@ from mailconfig import get_mail_user_privileges, add_remove_mail_user_privilege
 from mailconfig import get_mail_aliases, get_mail_aliases_ex, get_mail_domains, add_mail_alias, remove_mail_alias
 from mailconfig import get_mail_quota, set_mail_quota, get_default_quota, validate_quota
 from mfa import get_public_mfa_state, provision_totp, validate_totp_secret, enable_mfa, disable_mfa
+import contextlib
 
 env = utils.load_environment()
 
@@ -30,14 +31,12 @@ auth_service = auth.AuthService()
 
 # We may deploy via a symbolic link, which confuses flask's template finding.
 me = __file__
-try:
+with contextlib.suppress(OSError):
 	me = os.readlink(__file__)
-except OSError:
-	pass
 
 # for generating CSRs we need a list of country codes
 csr_country_codes = []
-with open(os.path.join(os.path.dirname(me), "csr_country_codes.tsv")) as f:
+with open(os.path.join(os.path.dirname(me), "csr_country_codes.tsv"), encoding="utf-8") as f:
 	for line in f:
 		if line.strip() == "" or line.startswith("#"): continue
 		code, name = line.strip().split("\t")[0:2]
@@ -81,7 +80,7 @@ def authorized_personnel_only(viewfunc):
 		# Not authorized. Return a 401 (send auth) and a prompt to authorize by default.
 		status = 401
 		headers = {
-			'WWW-Authenticate': 'Basic realm="{0}"'.format(auth_service.auth_realm),
+			'WWW-Authenticate': f'Basic realm="{auth_service.auth_realm}"',
 			'X-Reason': error,
 		}
 
@@ -91,7 +90,7 @@ def authorized_personnel_only(viewfunc):
 			status = 403
 			headers = None
 
-		if request.headers.get('Accept') in (None, "", "*/*"):
+		if request.headers.get('Accept') in {None, "", "*/*"}:
 			# Return plain text output.
 			return Response(error+"\n", status=status, mimetype='text/plain', headers=headers)
 		else:
@@ -122,9 +121,9 @@ def index():
 	no_users_exist = (len(get_mail_users(env)) == 0)
 	no_admins_exist = (len(get_admins(env)) == 0)
 
-	utils.fix_boto() # must call prior to importing boto
-	import boto.s3
-	backup_s3_hosts = [(r.name, r.endpoint) for r in boto.s3.regions()]
+	import boto3.s3
+	backup_s3_hosts = [(r, f"s3.{r}.amazonaws.com") for r in boto3.session.Session().get_available_regions('s3')]
+
 
 	return render_template('index.html',
 		hostname=env['PRIMARY_HOSTNAME'],
@@ -165,7 +164,7 @@ def login():
 		"api_key": auth_service.create_session_key(email, env, type='login'),
 	}
 
-	app.logger.info("New login session created for {}".format(email))
+	app.logger.info(f"New login session created for {email}")
 
 	# Return.
 	return json_response(resp)
@@ -174,8 +173,8 @@ def login():
 def logout():
 	try:
 		email, _ = auth_service.authenticate(request, env, logout=True)
-		app.logger.info("{} logged out".format(email))
-	except ValueError as e:
+		app.logger.info(f"{email} logged out")
+	except ValueError:
 		pass
 	finally:
 		return json_response({ "status": "ok" })
@@ -379,9 +378,9 @@ def dns_set_record(qname, rtype="A"):
 			# Get the existing records matching the qname and rtype.
 			return dns_get_records(qname, rtype)
 
-		elif request.method in ("POST", "PUT"):
+		elif request.method in {"POST", "PUT"}:
 			# There is a default value for A/AAAA records.
-			if rtype in ("A", "AAAA") and value == "":
+			if rtype in {"A", "AAAA"} and value == "":
 				value = request.environ.get("HTTP_X_FORWARDED_FOR") # normally REMOTE_ADDR but we're behind nginx as a reverse proxy
 
 			# Cannot add empty records.
@@ -443,7 +442,7 @@ def ssl_get_status():
 		{
 			"domain": d["domain"],
 			"status": d["ssl_certificate"][0],
-			"text": d["ssl_certificate"][1] + ((" " + cant_provision[d["domain"]] if d["domain"] in cant_provision else ""))
+			"text": d["ssl_certificate"][1] + (" " + cant_provision[d["domain"]] if d["domain"] in cant_provision else "")
 		} for d in domains_status ]
 
 	# Warn the user about domain names not hosted here because of other settings.
@@ -515,7 +514,7 @@ def totp_post_enable():
 	secret = request.form.get('secret')
 	token = request.form.get('token')
 	label = request.form.get('label')
-	if type(token) != str:
+	if not isinstance(token, str):
 		return ("Bad Input", 400)
 	try:
 		validate_totp_secret(secret)
@@ -595,6 +594,8 @@ def system_status():
 	# Create a temporary pool of processes for the status checks
 	with multiprocessing.pool.Pool(processes=5) as pool:
 		run_checks(False, env, output, pool)
+		pool.close()
+		pool.join()
 	return json_response(output.items)
 
 @app.route('/system/updates')
@@ -602,8 +603,7 @@ def system_status():
 def show_updates():
 	from status_checks import list_apt_updates
 	return "".join(
-		"%s (%s)\n"
-		% (p["package"], p["version"])
+		"{} ({})\n".format(p["package"], p["version"])
 		for p in list_apt_updates())
 
 @app.route('/system/update-packages', methods=["POST"])
@@ -754,7 +754,7 @@ def munin_cgi(filename):
 	support infrastructure like spawn-fcgi.
 	"""
 
-	COMMAND = 'su - munin --preserve-environment --shell=/bin/bash -c /usr/lib/munin/cgi/munin-cgi-graph'
+	COMMAND = 'su munin --preserve-environment --shell=/bin/bash -c /usr/lib/munin/cgi/munin-cgi-graph'
 	# su changes user, we use the munin user here
 	# --preserve-environment retains the environment, which is where Popen's `env` data is
 	# --shell=/bin/bash ensures the shell used is bash
@@ -796,14 +796,11 @@ def log_failed_login(request):
 	# During setup we call the management interface directly to determine the user
 	# status. So we can't always use X-Forwarded-For because during setup that header
 	# will not be present.
-	if request.headers.getlist("X-Forwarded-For"):
-		ip = request.headers.getlist("X-Forwarded-For")[0]
-	else:
-		ip = request.remote_addr
+	ip = request.headers.getlist("X-Forwarded-For")[0] if request.headers.getlist("X-Forwarded-For") else request.remote_addr
 
 	# We need to add a timestamp to the log message, otherwise /dev/log will eat the "duplicate"
 	# message.
-	app.logger.warning( "Mail-in-a-Box Management Daemon: Failed login attempt from ip %s - timestamp %s" % (ip, time.time()))
+	app.logger.warning( f"Mail-in-a-Box Management Daemon: Failed login attempt from ip {ip} - timestamp {time.time()}")
 
 
 # APP
